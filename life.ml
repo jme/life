@@ -1,43 +1,30 @@
-(* This is my first version of the OCaml-based life game.
-   
-   Life isI tried to keep to the functional side of OCaml 
+(* This is the "hybrid" version of the OCaml-based life game.
  
-  It uses an Int-keyed map to hold the cellrecs record.
+  Whereas the previous version used an Int-keyed map this version uses a plain Array
+  along with a mutable state field in the cellrec record.
  
-  The performance of this is thus fairly strongly tied to the speed of those map
-  lookups. (O log N) for the balanced binary tree-backed std lib Map.
-
-  Note that a fresh Map (representing the game grid) is generated for each
-  generation.
+  The raw array references are quite a bit faster than the Map lookups.
+ 
+  Note that a fresh Array (representing the game grid) is generated for each
+  generation, just as in the case of the previous Map-based version.
+ 
+  Another level of optimization (of at least, GC workload) might be available if that Array was just mutated
+  instead of regenerated. But this was an excercise in keeping to the
+  functional side of OCaml... 
   
-  Basically stream-of-consciousness coding to find my way around OCaml*)
-
+  Basically stream-of-consciousness coding by a OCaml newbie  *)
 open Graphics;;
-
-
-
-(* Need an int-keyed map structure to hold all of the various cells that make up
-  the Life game environment.
- 
-  The key used will be a cell sequence number created on game initialization.  *)
-
-module IntMap = Map.Make( struct
-  type t = int
-  let compare = compare
-end)
-
 
 
 (* the data for each cell is held in records (cellrecs).
   The v, row and col items contain positional and state values.
-  Access keys (just, sequence numbers  of int) for neighboring cells are
-  collected into the in list item    *)  
+  Access keys (just, sequence numbers  of int) for neighboring cells are collected into the in list item *)  
 
-type cellrec = {n: int list; v: bool; row: int; col: int;}
-
+type cellrec = {n: int list; mutable v: bool; row: int; col: int;}
 
 
-(* some dev helper functions *)
+
+(* some dev helper functions: ---------------------- *)
 
 let box_printer key xrec = 
   print_string("\nbox printer\n");
@@ -48,28 +35,16 @@ let print_ints k =
   print_string("\nint: " ^ (string_of_int k) ^  "\n") ;;
 
 
-(* dump IntMap data records *)
-
-let show_cell_recs rec_tuple =
-  let xrec = 
-    fst rec_tuple in
-    print_string("\nREC.row: " ^ string_of_int xrec.row ^ "\n");
-    let xlst =
-      snd rec_tuple in
-      IntMap.iter box_printer xlst ;;
-
-(* --------------------------------------------------*) 
 
 
-
-(* Yeah sure, I could have used the existing List.map but I just wanted to
-  excercise pattern matching a bit more.   *)
+(* Yeah sure, I could have used List.map but I just wanted to use pattern-matching
+  some more. Is that wrong?    *)
 
 let rec map f xs =
   match xs with
-    | [] -> []
+    | []  -> []
     | hd::tl -> f hd :: map f tl
-;;
+;; 
 
 
 
@@ -84,7 +59,6 @@ let xid a = a;;
 
 (* Assemble the previous coordinate functions into a list covering each of the 8
   theoretical neighbors of a given cell.
- 
   Because of frame boundaries not all of these will actually be possible/used, for a given cell  *)
 
 let xfuns = 
@@ -100,7 +74,6 @@ let xfuns =
 
 
 (* get random number generator wound up *)
-
 Random.self_init () ;;
 
 
@@ -112,10 +85,10 @@ let inBounds (a : int)  (low_bound : int)  (high_bound : int ) =
 
 
 
+
 (* Want to calculate the actual neighbors of a given cell.
   Fortunately such neighbors are easily characterized by a few simple
   arithmetic expressions. The next two functions do this:
- 
  
   This first function applies row & col transformer expressions to a row & col,
   and, returns the sequence number of the cell. Fail -> 0; *) 
@@ -130,7 +103,8 @@ let  getSN  span  row  col  fa  fb =
     else 0 ;;
 
 
-(* Now this second function tallies only the valid neighbors of a given cell   *)
+
+(* Now this second function tallies only the valid neighbors of a given cell *)
 
 let getNeighbors  row  col  span  crits =
 
@@ -141,40 +115,38 @@ let getNeighbors  row  col  span  crits =
 
 
 
-
-(* Here is where the intial grid is assembled.
+(* 
+ Here is where the intial grid is assembled.
  Cells are set with random state, their neighbors noted, etc.
 
  This function prepares and returns a context-tuned grid assembler that does the
- actual work.
+ actual work.  *)
 
- And The output of that HOF is an IntMap with the cell sequence number as an int key,
- and having a celllrec value.  *)
+let grid_assembler aspan neighbor_fns= 
 
-let get_grid_assembler aspan neighbor_fns= 
-
-  let rec assembler box nrow ncol ticks =
+  let ws = Array.make ((aspan + 1) * (aspan + 1)) {n=[]; v=false; row=0; col=0} in
+  let rec assembler nrow ncol ticks =
 
     if nrow = aspan then
         begin
-          if ncol = aspan then box
-
-          else assembler 
-                      (IntMap.add ticks 
-                                  {n=(getNeighbors 1 (ncol+1) aspan neighbor_fns); v=(Random.bool ()); row=1; col=(ncol+1)} 
-                                  box) 
-                      1 (ncol + 1) (ticks + 1)
+          if ncol <> aspan then  
+           begin 
+            ws.(ticks) <- {n=(getNeighbors 1 (ncol+1) aspan neighbor_fns); v=(Random.bool ()); row=1; col=(ncol+1)}; 
+            assembler  1 (ncol + 1) (ticks + 1)
+           end
         end
 
-    else assembler 
-                (IntMap.add ticks 
-                                {n=(getNeighbors (nrow+1) ncol aspan neighbor_fns); v=(Random.bool ()); row=(nrow+1); col=ncol}
-                                box)
-                (nrow+1) ncol (ticks+1)
+    else 
+      begin
+        ws.(ticks) <- {n=(getNeighbors (nrow+1) ncol aspan neighbor_fns); v=(Random.bool ()); row=(nrow+1); col=ncol};
+        assembler (nrow+1) ncol (ticks+1)
+      end
   in
-
-   assembler 
+  
+  assembler 0 1 1;
+  ws
 ;;
+
 
 
 
@@ -190,15 +162,14 @@ let get_grid_assembler aspan neighbor_fns=
  
   if that cellrec has a LIVE status, accumulate the sequence number into a list.
  
-  Finally, return the COUNT of accumulated list of all sequence numbers of cells that
-  were LIVE.  *)
+  Finally, return the COUNT of accumulated list of all sequence numbers of cells that were LIVE.  *)
 
-let getLiveCount  (ws: cellrec IntMap.t)  (seq_list: int list) =
+let getLiveCount  ws  (seq_list: int list) =
 
   let rec seqscan xs result =
     match xs with
       |  [] -> result
-      |  hd::tl ->  if ((IntMap.find hd ws).v : bool) && true then seqscan tl (hd :: result) else seqscan tl result;
+      |  hd::tl ->  if (ws.(hd)).v && true then seqscan tl (hd :: result) else seqscan tl result;
   in
     List.length (seqscan seq_list [] ) ;;
 
@@ -208,7 +179,7 @@ let getLiveCount  (ws: cellrec IntMap.t)  (seq_list: int list) =
 (* this looks at an existing cellrec and determines its next state 
  
   Note: those last couple if true-case match criteria could be consolidated but are kept discrete at
-  the moment in order to help interpret profiling stats *)
+  the moment in order to help interpret profiling stats    *)
 
 let getNewState   ws   neighbors  current_state  = 
 
@@ -247,10 +218,9 @@ type run_state_description = {zoom : int;
 
 (* pre-fill the mutable with a default environment in case nothing is specified by the command
   line params. *)
-
 let  run_env = ref 
                  {zoom = 3; 
-                  mspan=200; 
+                  mspan = 200; 
                   padding = 5; 
                   bkcolor = (rgb 253 246 227); 
                   fgcolor = (rgb 130 130 130)};;
@@ -268,15 +238,14 @@ let current_themes =
                    [("cosmic", {bcolor = (rgb 4 4 4); fcolor = (rgb 10 10 180)});
                     ("amberish", {bcolor = (rgb 10 10 10 ); fcolor = (rgb 204 203 105)});
                     ("oldskool", {bcolor = (rgb 253 246 227); fcolor = (rgb 130 130 130)});
-                    ("bw", {bcolor = (rgb 40 40 40); fcolor = (rgb 220 213 194)});
                     ("moo", {bcolor = (rgb 4 4 4); fcolor = (rgb 0 170 0)})  ] ;;
- 
+
+
 
 
 (* It is convenient to store the theme data in a map, using the theme name as
-  the key.  This way you can quickly reference individual cell records  
-
-  So, first fill a lookup map with theme info from the referenc list *)
+  the key.  This way you can quickly reference individual cell records   
+  So, first fill a lookup map with theme info from the referenc list   *)
 
 let rec mapfiller xs box =
   match xs with
@@ -285,7 +254,7 @@ let rec mapfiller xs box =
 
 
 
-(* and then here is the filled theme map value *)
+(* and then here is the filled theme map value   *)
 
 let themes = mapfiller  current_themes  ThemeRepo.empty;;
 
@@ -303,7 +272,7 @@ let theme_printer key xrec =
 
 let getFillPlotter env =
 
-  (fun key xrec -> begin
+  (fun xrec -> begin
                    if xrec.v = true then set_color env.fgcolor else set_color env.bkcolor;
                    
                    fill_rect (env.padding + (env.zoom * (xrec.row - 1))) 
@@ -311,6 +280,7 @@ let getFillPlotter env =
                              env.zoom 
                              env.zoom  
                   end) ;;
+
 
 
 
@@ -326,29 +296,31 @@ let clear_the_dancefloor env =
 
 
 (* Here is where the life algo rubber hits the road. 
- 
-  The 'reaper' is a function that is mapped over the work_set and which returns
-  a cellrec containing the new cell state. *)
+   The 'reaper' is a function that is mapped over the work_set and which returns
+   a cellrec containing the new cell state.   *)
 
 let getReaper xs = 
   (fun c -> {n=c.n; v=(getNewState xs c.n c.v); row=c.row; col=c.col;}) ;;
 
 
 
-(* this runner fn is where the bulk of the  work is done *)
+(* this runner fn is where the bulk of the  work is done    *)
 
 let runner reps xs =
 
   let env = !run_env in
   let renderer = (getFillPlotter env) in 
   
-  (* note that the IntMap iterator calls for a custom reaper (using current workset) function... *)
-  let rec looper ticks ws =
-    IntMap.iter renderer ws;  
+  (* note that the  in-cycle map function is returning a fresh Array each cycle.
+    Not as efficient as in-place mutation of a single arry, to be sure.
+    But this hybrid approach is simply to replace IntMap or Hashtbl lookups
+    with much faster direct array index references.   *)
+  let rec looper ticks msrc =
+    Array.iter renderer msrc;  
     synchronize ();
 
-    if ( key_pressed () = false) && (ticks < reps) then looper (ticks + 1) 
-                                                               (IntMap.map (getReaper ws) ws) else ticks in 
+    if ( key_pressed () = false) && (ticks < reps) then looper (ticks + 1) (Array.map (getReaper msrc) msrc)
+                   else ticks in 
 
   looper 0 xs ;;
 
@@ -367,8 +339,7 @@ let init_graphics env =
 
 
 
-(* all of these environment setter functions are called by the Arg handler. 
-   There's an abstraction hiding around here somewhere... *)
+(* all of these environment setter functions are called by the Arg handler. There's an abstraction hiding around here somewhere... *)
 
 let set_span n =
   print_string("\nspan: " ^ (string_of_int n));
@@ -378,14 +349,13 @@ let set_zoom n =
   print_string(", zoom: " ^ (string_of_int n));
   run_env := {zoom = n; mspan = !run_env.mspan; padding = !run_env.padding; bkcolor = !run_env.bkcolor; fgcolor = !run_env.fgcolor} ;;
 
-
 let set_theme x  =
-  try
-    let t_rec = ThemeRepo.find x themes in
-      run_env :=  {zoom = !run_env.zoom; mspan = !run_env.mspan; padding = !run_env.padding; bkcolor = t_rec.bcolor; fgcolor = t_rec.fcolor}  
-  with Not_found -> print_endline("\nSorry, there is no theme named " ^ x ^ ", using the default theme...")
-;; 
+  let t_rec = ThemeRepo.find x themes in
+    run_env :=  {zoom = !run_env.zoom; mspan = !run_env.mspan; padding = !run_env.padding; bkcolor = t_rec.bcolor; fgcolor = t_rec.fcolor} ;;
 
+
+
+(* returns an Arg spec function with pre-baked span and zoom values   *)
 
 let get_mode_fn z m =
   (fun () ->  run_env := {zoom = z; mspan = m; padding = !run_env.padding; bkcolor = !run_env.bkcolor; fgcolor = !run_env.fgcolor}) 
@@ -393,11 +363,11 @@ let get_mode_fn z m =
 
 
 
-(* command line specification, using the standard lib Arg module *)
+(* command line specification, using the standard lib Arg module    *)
 
 let speclist = [( "-regular", Arg.Unit (get_mode_fn 3 200), "(preset, with span: 200 and zoom: 3)\n");
                 ( "-rapido", Arg.Unit  (get_mode_fn 6 120), "(preset, with span: 120 and zoom: 6)\n");
-                ( "-medium", Arg.Unit (get_mode_fn 2 300), "(preset, with span: 300 and zoom: 2)\n");
+                ( "-medium", Arg.Unit (get_mode_fn 3 300), "(preset, with span: 300 and zoom: 2)\n");
                 ( "-jumbo", Arg.Unit (get_mode_fn 2 600), "(preset, with span: 600 and zoom: 2)\n");
                 ( "-mega", Arg.Unit (get_mode_fn 1 1000), "(preset, with span: 1000 and zoom: 1)\n");
                 ( "-t", Arg.String (set_theme), "use a preset color theme.  Options: [ cosmic, moo, oldskool, bw, amberish]\n");
@@ -406,8 +376,7 @@ let speclist = [( "-regular", Arg.Unit (get_mode_fn 3 200), "(preset, with span:
 
 
 
-
-(* Probably crude but help text is provided via this function *)
+(* help text is assembled here    *)
 
 let get_help_text  =
 
@@ -435,26 +404,22 @@ let get_help_text  =
 ;;
 
 
-
-(* main app entry point.
-   complete with a somewhat smelly way of handling help text. *)
+(* main app entry point, complete with a somewhat smelly way of handling help text. *)
 
 let () =
-
   Arg.parse speclist (fun a -> ()) (get_help_text) ;
 
   init_graphics !run_env;
+ 
+  let grid_array = grid_assembler !run_env.mspan xfuns in
 
-  let grid_assembler = get_grid_assembler !run_env.mspan xfuns in
-  let work_set = grid_assembler IntMap.empty 0 1 1 in
   let start_ts = Sys.time() in
-  let completed_reps = (runner max_int work_set) in
+  let completed_reps = (runner max_int grid_array) in
   let end_ts = Sys.time() in
     print_string("\n\n generations: " ^ string_of_int completed_reps);
     print_string( Printf.sprintf "\n total runtime: %.2f" (end_ts -. start_ts));
-    print_string( Printf.sprintf "\n GPS:  %.2f" ( (float_of_int completed_reps) /.  (end_ts -.  start_ts)))
+    print_string( Printf.sprintf "\n FPS:  %.2f" ( (float_of_int completed_reps) /.  (end_ts -.  start_ts)))
 ;;
-
 
  read_line  ();;
 
