@@ -12,7 +12,8 @@
   instead of regenerated. But this was an excercise in keeping to the
   functional side of OCaml... 
   
-  Basically stream-of-consciousness coding by a OCaml newbie  *)
+  Basically stream-of-consciousness coding to find my way around OCaml*)
+
 open Graphics;;
 
 
