@@ -1,4 +1,4 @@
-# lifes.ml
+# life.ml
 
 Just another version of Conway's Life game, written with OCaml in a (mostly) functional style.
 
