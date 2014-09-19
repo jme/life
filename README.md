@@ -1,8 +1,6 @@
 # life.ml
 
-Just another version of Conway's Life game, written with OCaml in a (mostly) functional style.
-
-A kind of Hello World tossed together to find my way around OCaml.
+Just another version of Conway's Life game, written with OCaml in a (mostly) functional style as a kind of Hello World excercise to find my way around OCaml.
 
 Fun & Lightweight, but not by any means meant to be a speed demon (for that you can use Golly or Xlife, etc).
 
@@ -40,7 +38,10 @@ Edges are NOT wrapped. This results in some expected shaping of the cell states-
 ## howto
 Run from command line, with optional grid size and zoom parameters, a few size & zoom presets and a few color scheme options.
 
-two essential parameters: span and zoom
+You can get the full command and option list with ./life -h  (or --help)
+
+
+a note on the span and zoom parameters:
 
 span: the Life gamespace is a square grid and the span parameter is just the size of an edge.
       e.g., a span of 200 yields a 200 x 200 game array
@@ -133,6 +134,7 @@ This map represents the inital state of the grid.
 
 ### run loop
 Now it's just a matter of setting up a run loop that:
+
  renders the cell grid elements by drawing to a double-buffered Graphics screen, 
 
  flips the back buffer to the main screen context, 
@@ -186,7 +188,7 @@ While that would be a fine choice I instead jumped right back into imperative wa
 
 This way we speedup both state queries and updates and everything else stays the same, including the creation of a fresh new grid array for each generation. So, hybrid. 
 
-The result is a 10-50x speedup, which is nice.
+The result is a 10x speedup, which is nice.
 
 
 Another quick gprof round shows that the program's seq_scan function now occupies the top spot, followed closely by GC ops. 
@@ -196,7 +198,7 @@ Another quick gprof round shows that the program's seq_scan function now occupie
 
 The seq_scan is pretty tight, being just a recursive pattern match loop, and apart from a few inconsequential type constraints there's not too much that this OCamel noob can see to do there within the existing logic structure.
 
-And while a further optimization would be to drop that GC overhead down with a single all-mutable array for the frame buffer I think I'll stop here.
+And while a further optimization would be to drop that GC overhead down with a single all-mutable array for the frame buffer I think I'll stop here for now.
 
 
 
@@ -205,7 +207,7 @@ And while a further optimization would be to drop that GC overhead down with a s
 
 Written with standard OCaml 4.01, no extra libs required
 
-Linux i86 build also available.
+Linux i86 build is also included.
 
 
 ## License
